@@ -46,26 +46,34 @@ local Entity = Class:extend()
 	end
 
 	--- Create copy of current object (with all attached nodes)
-	function Entity:clone()
-	    local entity = self:___getInstance()
-	    entity.nodes = Storage:new()
-	    entity.components = Storage:new()
-	    entity.vars = { }
-	    for key, val in pairs(self.vars) do
-	    	entity.vars[key] = val
-		end
+	function Entity:clone(id)
+	    local obj = self:___getInstance()
+	    obj.nodes = Storage:new()
+	    obj.components = Storage:new()
+	    obj.vars = copyTable(self.vars)
 	    for id, node in self.nodes:enum(true) do
 	        node = node:clone()
 	        node.id = id
-	        entity:attach(node)
+	        obj:attach(node)
 	    end
 	    for id, component in self.components:enum(true) do
 	    	local c = component:new()
-	    	c.entity = entity
-	    	entity.vars[c] = self.vars[component]
-	    	entity.components:add(c)
+	    	c.entity = obj
+	    	obj.vars[c] = self.vars[component]
+	    	obj.components:add(c)
 	    end
-	    return entity
+	    return obj
+	end
+
+	--- Set activity of entity
+	-- @param boolean value
+	function Entity:setActive(value)
+		if type(value) == "boolean" then
+			self.active = value
+			return
+		end
+		self.active = not self.active
+		return
 	end
 
 	--- Adding an inheritor to an object
@@ -125,6 +133,44 @@ local Entity = Class:extend()
 		return self.parent
 	end
 
+	--- Enumeration entities' tree
+	--  @param boolean active  enumerate only active nodes
+	--  @param boolean skipped  skip self in enumeration
+	--  @return function
+	function Entity:enum(active, skipped)
+		local beginner = self
+		if not (beginner and (beginner.nodes or beginner.getNodes)) then return dummy end
+		beginner = skipped and beginner:getNodes() or { beginner }
+		local tasks = { { beginner, 0, #beginner } }
+		local depth = 1
+		local i = 0
+		local current = tasks[depth]
+		return function ()
+			while i < current[3] or depth > 1 do
+				i = i + 1
+				local returned = current[1][i]
+				local nodes = returned and returned:getNodes()
+				if returned and nodes and next(nodes) then
+					if not active or returned.active then
+						current[2] = i
+						current = { nodes, 0, #nodes }
+						tasks[#tasks + 1] = current
+						depth = depth + 1
+						i = 0
+					end
+				elseif i >= current[3] and depth > 1 then
+					depth = depth - 1
+					current = tasks[depth]
+					i = current[2]
+				end
+				if not active or returned and returned.active then
+					return returned
+				end
+			end
+			return nil
+		end
+	end
+
 	--- Backup / restore entity
 	function Entity:sync(data)
 		if not data then
@@ -150,21 +196,34 @@ local Entity = Class:extend()
 		return false
 	end
 
-	---
-	function Entity:setActive(bool)
-		local active = bool
-		if bool == nil then active = not self.active end
-		if self.parent and not (self.parent.active) and active then return false end
-		for object in self:enum() do
-			object.active = active
-		end
-		return true
+
+	function Entity:addComponent(component, ...)
+		assert(component:isInstanceOf(Component), 'not a subclass of Component')
+
+		-- body
 	end
+
+	function Entity:removeComponent( ... )
+		-- body
+	end
+
+
+	function Entity:getComponent( ... )
+		-- body
+	end
+
+
+
+
+
+
+
+
 
 	--- Add component to entity
 	-- @param Component component
 	function Entity:addComponent(component, ...)
-		assert(component:isInstanceOf(Component), 'not a subclass of Component')
+		
 		if self:hasComponent(component) then return false end
 		if component.unique and self:hasComponentClass(component.___class) then return false end
 		self.components.class[component.___class] = self.components.class[component.___class] and self.components.class[component.___class] + 1 or 1
@@ -185,16 +244,6 @@ local Entity = Class:extend()
 			return component.removed and component:removed(self, ...)
 		end
 		return false
-	end
-
-	---
-	function Entity:clearComponents()
-		for _, component in self.components:enum() do
-			self:removeComponent(component)
-		end
-		self.components:reset()
-		self.components.class = { }
-		return true
 	end
 
 	--- Check if component exists on entity
@@ -236,42 +285,5 @@ local Entity = Class:extend()
 		return list
 	end
 
-	--- Enumeration entities' tree
-	--  @param boolean active  enumerate only active nodes
-	--  @param boolean skipped  skip self in enumeration
-	--  @return function
-	function Entity:enum(active, skipped)
-		local beginner = self
-		if not (beginner and (beginner.nodes or beginner.getNodes)) then return dummy end
-		beginner = skipped and beginner:getNodes() or { beginner }
-		local tasks = { { beginner, 0, #beginner } }
-		local depth = 1
-		local i = 0
-		local current = tasks[depth]
-		return function ()
-			while i < current[3] or depth > 1 do
-				i = i + 1
-				local returned = current[1][i]
-				local nodes = returned and returned:getNodes()
-				if returned and nodes and next(nodes) then
-					if not active or returned.active then
-						current[2] = i
-						current = { nodes, 0, #nodes }
-						tasks[#tasks + 1] = current
-						depth = depth + 1
-						i = 0
-					end
-				elseif i >= current[3] and depth > 1 then
-					depth = depth - 1
-					current = tasks[depth]
-					i = current[2]
-				end
-				if not active or returned and returned.active then
-					return returned
-				end
-			end
-			return nil
-		end
-	end
 
 return Entity
